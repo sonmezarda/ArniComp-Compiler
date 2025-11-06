@@ -1,7 +1,7 @@
 import pycparser as pcp
 from pycparser.c_ast import FileAST,FuncDef
 
-FILE_NAME = 'main.c'
+FILE_NAME = 'tests/define.c'
 PARSER_DEBUG = False
 def read_file(filename):
     with open(filename, 'r') as f:
@@ -24,6 +24,7 @@ def main():
     ast:FileAST = parser.parse(code, debug=PARSER_DEBUG)
 
     main_func = get_main_function(ast)
+    
     if main_func:
         print(f"Found main function: {main_func.decl.name}")
     else:
