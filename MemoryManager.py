@@ -7,6 +7,7 @@ class VariableType:
     name:str = ''
     size:int = 0
     is_signed:bool = False
+    scope:str = '' # 'static', 'local', 'global'
 
 
 class VariableTypes:
@@ -14,10 +15,11 @@ class VariableTypes:
     int = VariableType(name='int', size=2, is_signed=True)
 
 class Variable:
-    def __init__(self, name:str, type:VariableType, address:int):
+    def __init__(self, name:str, type:VariableType, address:int, scope:str = ''):
         self.name = name
         self.type = type
         self.address = address
+        self.scope = scope
 
 class VariableManager:
     def __init__(self, static_start_address:int=0, static_end_address:int=0x00FF):
