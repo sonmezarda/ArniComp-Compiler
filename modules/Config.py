@@ -1,0 +1,9 @@
+
+REGISTER_BIT_COUNT = 8
+REGISTER_MAX_VALUE = 2**REGISTER_BIT_COUNT - 1
+
+REGISTERS = [
+    'RA',
+    'RB',
+    'RD'
+]
