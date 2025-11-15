@@ -60,6 +60,14 @@ class VariableManager:
     def get_variable(self, name:str) -> Variable | None:
         return self.variables.get(name, None)
     
+    def free_variable(self, name:str):
+        var = self.variables.get(name, None)
+        if var is None:
+            raise ValueError(f"Variable '{name}' does not exist.")
+        for offset in range(var.type.size):
+            del self.addresses[var.address.address + offset]
+        del self.variables[name]
+
     def print_variables(self):
         for var_name, var in self.variables.items():
             print(f"Variable '{var_name}': Type={var.type.name}, Address={var.address.address:#04x}")

@@ -84,8 +84,6 @@ def create_variable_symbol(decl:Decl, scope:SymbolScope) -> Symbol:
     )
     return var_symbol
 
-
-
 def generate_symbol_table(ast:FileAST)  -> SymbolTable:
     symbol_table = SymbolTable()
     for ext in ast.ext:

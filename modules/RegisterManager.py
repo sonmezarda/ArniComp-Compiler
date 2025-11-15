@@ -5,6 +5,7 @@ class RegisterContentType(StrEnum):
     EMPTY = 'empty'
     VARIABLE = 'variable'
     CONSTANT = 'constant'
+    VARIABLE_ADDRESS = 'variable_address'
 
 class RegisterContent:
     def __init__(self, content_type:RegisterContentType, value:int|None = None, variable_name:str|None = None):
@@ -28,6 +29,14 @@ class RegisterContent:
             if not variable_name:
                 raise ValueError("Variable register content must have a variable name.")
             self.content_type = RegisterContentType.VARIABLE
+            self.variable_name = variable_name
+            self.value = None
+        elif content_type == RegisterContentType.VARIABLE_ADDRESS:
+            if value is not None:
+                raise ValueError("Variable address register content should not have a direct value.")
+            if not variable_name:
+                raise ValueError("Variable address register content must have a variable name.")
+            self.content_type = RegisterContentType.VARIABLE_ADDRESS
             self.variable_name = variable_name
             self.value = None
         else:

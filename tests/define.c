@@ -1,6 +1,6 @@
 
-volatile char x = 20;
+volatile char x = 20 + 20;
 void main(){
     char a;
-    char c = 10;
+    char c =10;
 }
