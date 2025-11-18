@@ -3,7 +3,7 @@ from pycparser.c_ast import FileAST
 from modules.FileHelper import read_file
 from modules.SymbolTableGen import generate_symbol_table
 from modules.MemoryManager import VariableManager
-from modules.IRGen import generete_ir
+from modules.IRGen import generate_ir_high
 
 FILE_NAME = 'tests/define.c'
 PARSER_DEBUG = False
@@ -37,7 +37,7 @@ def main():
     vm.load_symbol_table(symbol_table)
     vm.print_variables()
     print(symbol_table.as_dict())
-    ir_lines =  generete_ir(ast)
+    ir_lines =  generate_ir_high(ast)
     for line in ir_lines:
         print(line)
 
