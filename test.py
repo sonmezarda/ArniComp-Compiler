@@ -18,8 +18,46 @@ def optimize_hir(hir_lines:list[str], symbol_table: SymbolTable) -> list[HirLine
     optimize_hir_lines = []
     static_vars = find_static_vars(parsed_hir_lines, symbol_table)
     optimized_hir_lines = paste_static_vars(parsed_hir_lines, static_vars)
+    optimized_hir_lines = remove_unused_temporaries(optimized_hir_lines)
     print(static_vars)
     return optimized_hir_lines
+
+def remove_unused_temporaries(hir_lines:list[HirLine]) -> list[HirLine]:
+    optimized_hir_lines = []
+    used_temps_count = get_temp_vars_used_count(hir_lines)
+    for hir in hir_lines:
+        if isinstance(hir, AssignmentHirLine):
+            if hir.var_name.startswith('.t'):
+                if used_temps_count.get(hir.var_name, 99) == 1:
+                    continue
+        elif isinstance(hir, ArithmeticOpHirLine):
+            if hir.result_var.startswith('.t'):
+                if used_temps_count.get(hir.result_var, 99) == 1:
+                    continue
+        elif isinstance(hir, ConditionalOpHirLine):
+            if hir.result_var.startswith('.t'):
+                if used_temps_count.get(hir.result_var, 99) == 1:
+                    continue
+        optimized_hir_lines.append(hir)
+    return  optimized_hir_lines
+
+def _extract_value_from_line(hir: HirLine):
+    """producer satırından sonucu tek değer olarak döndürür"""
+    if isinstance(hir, AssignmentHirLine):
+        return hir.value
+    elif isinstance(hir, ArithmeticOpHirLine):
+        return f"{hir.left_operand} {hir.operator} {hir.right_operand}"
+    elif isinstance(hir, ConditionalOpHirLine):
+        return f"{hir.left_operand} {hir.operator} {hir.right_operand}"
+    else:
+        raise Exception("Unsupported temp producer")
+
+
+def is_line_exists(hir_lines:list[HirLine], target_line:str) -> bool:
+    for hir in hir_lines:
+        if hir.line == target_line:
+            return True
+    return False
 
 def find_static_vars(hir_lines:list[HirLine], symbol_table: SymbolTable) -> dict[str,int]:
     static_vars = {}
@@ -78,6 +116,29 @@ def check_var_used(hir_lines:list[str]):
                 used_vars.add(token)
     return used_vars
 
+def get_var_used_count(hir_lines:list[HirLine], symbol_table:SymbolTable) -> dict[str,int]:
+    used_vars_count = {}
+    for hir in hir_lines:
+        splitted = hir.splitted
+        for token in splitted:
+            if token.startswith('.t') or symbol_table.is_exists(token):
+                if token in used_vars_count:
+                    used_vars_count[token] += 1
+                else:
+                    used_vars_count[token] = 1
+    return used_vars_count
+
+def get_temp_vars_used_count(hir_lines:list[HirLine]) -> dict[str,int]:
+    used_temps_count = {}
+    for hir in hir_lines:
+        splitted = hir.splitted
+        for token in splitted:
+            if token.startswith('.t'):
+                if token in used_temps_count:
+                    used_temps_count[token] += 1
+                else:
+                    used_temps_count[token] = 1
+    return used_temps_count
 
 class HirLine:
     def __init__(self, line:str):

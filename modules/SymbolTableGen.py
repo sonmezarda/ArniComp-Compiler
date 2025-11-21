@@ -52,6 +52,9 @@ class SymbolTable:
     def get(self, name:str) -> Symbol | None:
         return self.table.get(name, None)
     
+    def is_exists(self, name:str) -> bool:
+        return name in self.table
+    
     def as_dict(self):
         return {name: symbol.as_dict() for name, symbol in self.table.items()}
 
