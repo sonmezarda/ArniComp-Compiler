@@ -1,7 +1,7 @@
 
-volatile char x = 20 + 20;
+char x = 20 + 20;
 void main(){
-    char a;
+    volatile char a;
     char c = 10;
     volatile char b = x + c;
     if(b > 50){

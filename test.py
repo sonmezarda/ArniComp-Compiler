@@ -42,7 +42,7 @@ def main():
     
     print("---- Optimized HIR Lines With Removed Temporaries ----")
     for line in optimized_hir_lines:
-        print(line, str(line.type))
+        print(line,'|', str(line.type))
     
     
     #lir_lines = generate_ir_low(optimized_hir_lines)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from helpers.HirHelper import _op_eval
 class HirLine:
     def __init__(self, line:str):
         self.line = line
