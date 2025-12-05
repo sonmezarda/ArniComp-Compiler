@@ -4,47 +4,10 @@ from typing import List, Union
 from pycparser import c_ast
 from pycparser.c_ast import FileAST
 
-_temp_counter = 0
+from helpers.HirHelper import new_temp, invert_condition, format_val, _op_eval
+
 _else_label_counter = 0
 _if_label_counter = 0
-
-def new_temp() -> str:
-    global _temp_counter
-    name = f".t{_temp_counter}"
-    _temp_counter += 1
-    return name
-
-_op_eval = {
-    '+': lambda a,b: a + b,
-    '-': lambda a,b: a - b,
-    '*': lambda a,b: a * b,
-    '/': lambda a,b: a // b if b != 0 else 0,
-    '%': lambda a,b: a % b if b != 0 else 0,
-    '<<': lambda a,b: a << b,
-    '>>': lambda a,b: a >> b,
-    '&': lambda a,b: a & b,
-    '|': lambda a,b: a | b,
-    '^': lambda a,b: a ^ b,
-    '&&': lambda a,b: 1 if (a and b) else 0,
-    '||': lambda a,b: 1 if (a or b) else 0,
-    '==': lambda a,b: 1 if a == b else 0,
-    '!=': lambda a,b: 1 if a != b else 0,
-    '<': lambda a,b: 1 if a < b else 0,
-    '<=': lambda a,b: 1 if a <= b else 0,
-    '>': lambda a,b: 1 if a > b else 0,
-    '>=': lambda a,b: 1 if a >= b else 0,
-}
-
-def invert_condition(op: str) -> str:
-    mapping = {
-        '>': '<=',
-        '<': '>=',
-        '>=': '<',
-        '<=': '>',
-        '==': '!=',
-        '!=': '==',
-    }
-    return mapping[op]
 
 def generate_else_label() -> str:
     global _else_label_counter
@@ -141,8 +104,7 @@ def get_ir_high(block_items: List[c_ast.Node]) -> List[str]:
             raise NotImplementedError(f"IR generation for main node type '{type(node).__name__}' not implemented.")
     return lines
 
-def format_val(v: Union[int,str]) -> str:
-    return str(v) if isinstance(v, int) else v
+
 
 def gen_expr(node: c_ast.Node, ir: List[str]) -> Union[int,str]:
     # Constant
