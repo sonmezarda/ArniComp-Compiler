@@ -5,7 +5,8 @@ from pycparser.c_ast import FileAST
 from helpers.FileHelper import read_file
 from modules.SymbolTableGen import generate_symbol_table, SymbolTable
 from modules.MemoryManager import VariableManager
-from modules.IRGen import generate_ir_high, _op_eval
+from modules.HIRGen import generate_ir_high
+from modules.LIRGen import generate_ir_low
 
 from modules.HIROptimizer import optimize_hir
 from entities.HirLine import HirLine
@@ -15,11 +16,7 @@ PARSER_DEBUG = False
 def create_symbol_table():
     pass
 
-def generate_ir_low(hir_lines:list[HirLine]) -> list[str]:
-    low_ir_lines = []
-    for hir in hir_lines:
-        print(hir.type)
-    return low_ir_lines
+
 
 def main():
     parser = pcp.CParser(lex_optimize=True, yacc_optimize=True)
@@ -39,6 +36,8 @@ def main():
 
 
     optimized_hir_lines = optimize_hir(hir_lines, symbol_table)
+
+    lir_lines = generate_ir_low(optimized_hir_lines)
     
     print("---- Optimized HIR Lines With Removed Temporaries ----")
     for line in optimized_hir_lines:
@@ -48,5 +47,15 @@ def main():
     #lir_lines = generate_ir_low(optimized_hir_lines)
 
 
+def lir_test():
+    test_hir_lines = [
+        "b = 50"
+    ]
+
+    hir_lines = HirLine.parse_hir_lines(test_hir_lines)
+    lir_lines = generate_ir_low(hir_lines)
+    for lir in lir_lines:
+        print(lir)
+
 if __name__ == '__main__':
-    main()
+    lir_test()

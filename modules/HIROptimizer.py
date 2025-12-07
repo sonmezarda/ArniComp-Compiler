@@ -20,7 +20,17 @@ def remove_unused_temporaries(hir_lines:list[HirLine]) -> list[HirLine]:
                         optimized_hir_lines.append(ArithmeticOpHirLine(f"{next_hir.var_name} = {hir.left_operand} {hir.operator} {hir.right_operand}"))
                         is_next_to_remove = True
                         continue
-        
+        if isinstance(hir, AssignmentHirLine):
+            if hir.var_name.startswith('.t'):
+                if used_temps_count.get(hir.var_name, 0) == 2:
+                    if hir_lines[i+1].type in [HirLineType.ASSIGNMENT]:
+                        next_hir : AssignmentHirLine = hir_lines[i+1]
+                        hir : AssignmentHirLine = hir
+                        optimized_hir_lines.append(AssignmentHirLine(f"{next_hir.var_name} = {hir.value}"))
+                        is_next_to_remove = True
+                        continue
+
+
         optimized_hir_lines.append(hir)
     return  optimized_hir_lines
 

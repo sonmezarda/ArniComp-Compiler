@@ -21,6 +21,8 @@ def generate_if_label() -> str:
     _if_label_counter += 1
     return name
 
+
+
 def generate_ir_high(ast:FileAST) -> List[str]:
     lines: List[str] = []
     main_func = get_main_function(ast) 
