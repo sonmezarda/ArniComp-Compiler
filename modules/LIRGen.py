@@ -3,15 +3,18 @@ from __future__ import annotations
 from entities.HirLine import *
 from entities.LirLine import *
 
-def generate_ir_low(hir_lines:list[HirLine]) -> list[str]:
+def generate_ir_low(hir_lines:list[HirLine]) -> list[LirLine]:
     low_ir_lines:list[LirLine] = []
     for hir in hir_lines:
         if isinstance(hir, AssignmentHirLine):
             # b = 50 -> LDI 50; STORE b
             if hir.isConstant:
+                mar_destination = MovDestination(MovDestinationType.VARIABLE_ADDRESS, hir.var_name)
+                low_ir_lines.append(SetMarLirLine.create_line(mar_destination))
                 low_ir_lines.append(LoadImmLirLine.create_line(hir.value))
                 mov_destination = MovDestination(MovDestinationType.VARIABLE, hir.var_name)
                 mov_source = MovSource(MovSourceType.REGISTER, SOURCE_REGISTERS_STR[0])
+                print("[X] MOV SOURCE:", mov_source)
                 low_ir_lines.append(MovLirLine.create_line(mov_destination, mov_source))
     return low_ir_lines
 

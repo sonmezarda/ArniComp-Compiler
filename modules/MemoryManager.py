@@ -22,6 +22,11 @@ class VariableAddress():
     def __init__(self, address:int, address_type:AddressType):
         self.address = address 
         self.address_type = address_type # 
+    
+    def get_low_byte(self) -> int:
+        return self.address & 0x00FF
+    def get_high_byte(self) -> int:
+        return (self.address >> 8) & 0x00FF
 
 class Variable:
     def __init__(self, name:str, type:VariableType, address:VariableAddress, scope:str = ''):

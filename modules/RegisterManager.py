@@ -1,5 +1,5 @@
 from enum import StrEnum
-from modules.Config import REGISTER_MAX_VALUE
+from modules.Config import REGISTER_MAX_VALUE, REGISTERS
 
 class RegisterContentType(StrEnum):
     EMPTY = 'empty'
@@ -13,7 +13,7 @@ class RegisterContent:
             self.content_type = RegisterContentType.EMPTY
             value = None
         elif content_type == RegisterContentType.CONSTANT:
-            if not value:
+            if value is None:
                 raise ValueError("Constant register content must have a value.")
             if value > REGISTER_MAX_VALUE:
                 raise ValueError(f"Constant value {value} exceeds max register value {REGISTER_MAX_VALUE}.")
@@ -44,8 +44,10 @@ class RegisterContent:
 
 
 class Register():
-    def __init__(self, name:str):
+    def __init__(self, name:str, readable:bool = True, writable:bool = True):
         self.name = name
+        self.readable = readable
+        self.writable = writable
         self.is_allocated = False
         self.content = None
     
@@ -59,8 +61,11 @@ class Register():
     
 
 class RegisterManager:
-    def __init__(self, register_names:list[str]):
-        self.registers: dict[str, Register] = {name: Register(name) for name in register_names}
+    def __init__(self, register_config:dict[int, dict[str, any]]):
+        self.registers: dict[str, Register] = {}
+        for reg_info in register_config.values():
+            reg = Register(name=reg_info['NAME'], readable=reg_info['READABLE'], writable=reg_info['WRITABLE'])
+            self.registers[reg.name] = reg
     
     def get_register(self, name:str) -> Register:
         return self.registers.get(name, None)
@@ -83,4 +88,22 @@ class RegisterManager:
                 return reg
         return None
     
+class ArnicompRegisterManager(RegisterManager):
+    def __init__(self):
+        super().__init__(REGISTERS)
     
+    def get_mar_registers(self) -> tuple[Register, Register]:
+        marl_low = self.get_register('MARL')
+        marl_high = self.get_register('MARH')
+        return (marl_low, marl_high)
+
+    def get_mar_address(self) -> int:
+        marl_low = self.get_register('MARL')
+        marl_high = self.get_register('MARH')
+        if marl_low.content is None or marl_high.content is None:
+            raise ValueError("MAR registers are not properly set.")
+        address = (marl_high.content.value << 8) | marl_low.content.value
+        return address
+
+    def check_mar_address(self, address:int) -> bool:
+        return address == self.get_mar_address()

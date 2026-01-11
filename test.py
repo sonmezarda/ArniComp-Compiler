@@ -7,44 +7,49 @@ from modules.SymbolTableGen import generate_symbol_table, SymbolTable
 from modules.MemoryManager import VariableManager
 from modules.HIRGen import generate_ir_high
 from modules.LIRGen import generate_ir_low
+from modules.AssemblyGen import AssemblyGenerator
 
 from modules.HIROptimizer import optimize_hir
 from entities.HirLine import HirLine
-FILE_NAME = 'tests/define.c'
+FILE_NAME = 'tests/first.c'
 PARSER_DEBUG = False
 
 def create_symbol_table():
     pass
 
-
-
 def main():
     parser = pcp.CParser(lex_optimize=True, yacc_optimize=True)
-    vm = VariableManager()
     code = read_file(FILE_NAME)
     print(code)
     ast:FileAST = parser.parse(code, debug=PARSER_DEBUG)
 
     symbol_table = generate_symbol_table(ast)
-    vm.load_symbol_table(symbol_table)
-    vm.print_variables()
+
     print(symbol_table.as_dict())
     hir_lines =  generate_ir_high(ast)
     print("---- HIR Lines ----")
     for line in hir_lines:
         print(line)
 
-
     optimized_hir_lines = optimize_hir(hir_lines, symbol_table)
-
-    lir_lines = generate_ir_low(optimized_hir_lines)
-    
     print("---- Optimized HIR Lines With Removed Temporaries ----")
     for line in optimized_hir_lines:
         print(line,'|', str(line.type))
     
+    lir_lines = generate_ir_low(optimized_hir_lines)
     
-    #lir_lines = generate_ir_low(optimized_hir_lines)
+    print("---- LIR Lines ----")
+    for line in lir_lines:
+        print(line)
+    
+    assembly_generator = AssemblyGenerator(symbol_table)
+    assembly_lines = assembly_generator.generate_assembly_code(lir_lines)
+
+    print("---- Assembly Lines ----")
+    for line in assembly_lines:
+        print(line)
+    
+
 
 
 def lir_test():
@@ -58,4 +63,4 @@ def lir_test():
         print(lir)
 
 if __name__ == '__main__':
-    lir_test()
+    main()
