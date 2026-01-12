@@ -138,3 +138,93 @@ class LirLineType:
     LDI = 'LDI'
     MOV = 'MOV'
     SETMAR = 'SETMAR'
+    SETPR = 'SETPR'
+    CMP = 'CMP'
+    LABEL = 'LABEL'
+    GOTO = 'GOTO'
+    # Conditional jumps
+    JEQ = 'JEQ'
+    JNE = 'JNE'
+    JLT = 'JLT'
+    JLE = 'JLE'
+    JGT = 'JGT'
+    JGE = 'JGE'
+
+
+class CmpLirLine(LirLine):
+    """
+    CMP source - Compare RD with source, sets flags (LT, GT, EQ)
+    """
+    def __init__(self, line: str):
+        super().__init__(line)
+        if self.splitted[0] != LirLineType.CMP:
+            raise ValueError(f"Invalid LIR line for CmpLirLine: {line}")
+        self.type = LirLineType.CMP
+        self.source_str = self.splitted[1]
+        self.source: MovSource = MovSource.parse(self.source_str)
+    
+    @staticmethod
+    def create_line(source: MovSource) -> 'CmpLirLine':
+        return CmpLirLine(f"CMP {source}")
+
+
+class LabelLirLine(LirLine):
+    """
+    Label definition in LIR
+    """
+    def __init__(self, line: str):
+        super().__init__(line)
+        self.type = LirLineType.LABEL
+        # Format: "label_name:"
+        self.label_name = line.rstrip(':')
+    
+    @staticmethod
+    def create_line(label_name: str) -> 'LabelLirLine':
+        return LabelLirLine(f"{label_name}:")
+
+
+class GotoLirLine(LirLine):
+    """
+    Unconditional jump in LIR (assumes PR is already set via SETPR)
+    """
+    def __init__(self, line: str):
+        super().__init__(line)
+        if self.splitted[0] != LirLineType.GOTO:
+            raise ValueError(f"Invalid LIR line for GotoLirLine: {line}")
+        self.type = LirLineType.GOTO
+    
+    @staticmethod
+    def create_line() -> 'GotoLirLine':
+        return GotoLirLine("GOTO")
+
+
+class ConditionalJumpLirLine(LirLine):
+    """
+    Conditional jump in LIR (JEQ, JNE, JLT, JLE, JGT, JGE)
+    Assumes PR is already set via SETPR
+    """
+    def __init__(self, line: str):
+        super().__init__(line)
+        self.jump_type = self.splitted[0]  # JEQ, JNE, JLT, etc.
+        self.type = self.jump_type
+    
+    @staticmethod
+    def create_line(jump_type: str) -> 'ConditionalJumpLirLine':
+        return ConditionalJumpLirLine(f"{jump_type}")
+
+
+class SetPrLirLine(LirLine):
+    """
+    Set Program Register (PR) to a label address.
+    Similar to SETMAR but for jump targets.
+    """
+    def __init__(self, line: str):
+        super().__init__(line)
+        if self.splitted[0] != LirLineType.SETPR:
+            raise ValueError(f"Invalid LIR line for SetPrLirLine: {line}")
+        self.type = LirLineType.SETPR
+        self.target_label = self.splitted[1]
+    
+    @staticmethod
+    def create_line(target_label: str) -> 'SetPrLirLine':
+        return SetPrLirLine(f"SETPR {target_label}")

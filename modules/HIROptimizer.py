@@ -107,10 +107,15 @@ def propagate_constants(hir_lines: list[HirLine], symbol_table: SymbolTable) -> 
             propagated_lines.append(hir)
             
         elif isinstance(hir, IfOpHirLine):
-            # For IF lines we can also try to resolve the condition variable
-            resolved_cond = _resolve_value(hir.cond_var, known_values)
-            if resolved_cond != hir.cond_var:
-                hir.set_cond_var(resolved_cond)
+            # For IF lines, resolve left and right operands
+            resolved_left = _resolve_value(hir.left_operand, known_values)
+            resolved_right = _resolve_value(hir.right_operand, known_values)
+            
+            if resolved_left != hir.left_operand:
+                hir.set_left_operand(resolved_left)
+            if resolved_right != hir.right_operand:
+                hir.set_right_operand(resolved_right)
+            
             propagated_lines.append(hir)
             
         elif isinstance(hir, LabelHirLine):
@@ -197,8 +202,11 @@ def remove_dead_assignments(hir_lines: list[HirLine], symbol_table: SymbolTable)
             used_vars.discard(hir.result_var)
             
         elif isinstance(hir, IfOpHirLine):
-            if isinstance(hir.cond_var, str):
-                used_vars.add(hir.cond_var)
+            # Mark operands in IF condition as used
+            if isinstance(hir.left_operand, str):
+                used_vars.add(hir.left_operand)
+            if isinstance(hir.right_operand, str):
+                used_vars.add(hir.right_operand)
     
     # After the loop, any last assignments that were never used are dead
     # (for non-volatile variables)

@@ -12,7 +12,7 @@ from modules.AssemblyGen import AssemblyGenerator
 from modules.HIROptimizer import optimize_hir
 from modules.LIROptimizer import optimize_lir
 from entities.HirLine import HirLine
-FILE_NAME = 'tests/first.c'
+FILE_NAME = 'tests/if.c'
 PARSER_DEBUG = False
 
 def create_symbol_table():
@@ -50,7 +50,7 @@ def main():
         print(line)
     
     assembly_generator = AssemblyGenerator(symbol_table)
-    assembly_lines = assembly_generator.generate_assembly_code(optimized_lir_lines)
+    assembly_lines = assembly_generator.generate_assembly_code(lir_lines)
 
     print("---- Assembly Lines ----")
     for line in assembly_lines:

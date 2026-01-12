@@ -2,7 +2,7 @@ from entities.LirLine import *
 from modules.MemoryManager import VariableManager
 from modules.SymbolTableGen import SymbolTable
 from modules.RegisterManager import RegisterManager, Register, RegisterContent, RegisterContentType, ArnicompRegisterManager
-
+from helpers.ArchitectureHelper import MAX_LDI_VALUE
 class AssemblyGenerator:
     def __init__(self, symbolTable: SymbolTable):
         self.symbol_table = symbolTable
@@ -32,7 +32,12 @@ class AssemblyGenerator:
         assembly_lines:list[str] = self.assembly_lines
         for lir in lir_lines:
             if isinstance(lir, LoadImmLirLine):
-                assembly_lines.append(self._ASM_load_imm_constant(lir.value))
+                if lir.value > MAX_LDI_VALUE:
+                    value_to_set = lir.value & 0b01111111
+                    assembly_lines.append(ASM_instructions.LDI(value_to_set))
+                    assembly_lines.append(ASM_instructions.SETMSBRA())
+                else:
+                    assembly_lines.append(self._ASM_load_imm_constant(lir.value))
             elif isinstance(lir, MovLirLine):
                 movDestination = lir.destination
                 movSource = lir.source
@@ -71,6 +76,34 @@ class AssemblyGenerator:
 
                 else:
                     raise ValueError("SETMAR destination must be of type VARIABLE_ADDRESS.")
+            
+            elif isinstance(lir, CmpLirLine):
+                # CMP source - compare RD with source
+                source = lir.source
+                if source.type == MovSourceType.REGISTER:
+                    assembly_lines.append(ASM_instructions.CMP(source.reg_name))
+                elif source.type == MovSourceType.VARIABLE:
+                    # CMP M (memory at MAR)
+                    assembly_lines.append(ASM_instructions.CMP('M'))
+                else:
+                    raise ValueError(f"Unsupported CMP source type: {source.type}")
+            
+            elif isinstance(lir, LabelLirLine):
+                # Label definition
+                assembly_lines.append(ASM_instructions.LABEL(lir.label_name))
+            
+            elif isinstance(lir, SetPrLirLine):
+                # Set Program Register to label address
+                assembly_lines.extend(self._ASM_set_pr(lir.target_label))
+            
+            elif isinstance(lir, GotoLirLine):
+                # Unconditional jump (PR already set via SETPR)
+                assembly_lines.append(ASM_instructions.JMP())
+            
+            elif isinstance(lir, ConditionalJumpLirLine):
+                # Conditional jump (PR already set via SETPR)
+                assembly_lines.append(ASM_instructions.CONDITIONAL_JUMP(lir.jump_type))
+            
             else:
                 print("Unhandled LIR line type:", type(lir))
         
@@ -85,6 +118,7 @@ class AssemblyGenerator:
         self.register_manager.allocate_register('RA', RegisterContent(RegisterContentType.CONSTANT, value=value))
         return ASM_instructions.LDI(value)
     
+
     def _ASM_mov(self, dest_reg_name:str, src_reg_name:str) -> str:
         if dest_reg_name == src_reg_name:
             return ""  # No need to move if source and destination are the same
@@ -126,6 +160,19 @@ class AssemblyGenerator:
         
         return lines
     
+    def _ASM_set_pr(self, target_label: str) -> list[str]:
+        """
+        Set Program Register (PRL) to label address.
+        Note: For 8-bit architecture, we only use PRL for now.
+        PRH support can be added for larger address space.
+        """
+        lines: list[str] = []
+        # TODO: Add optimization to skip if PRL already has this label
+        lines.append(ASM_instructions.LDI_LABEL(target_label))
+        self.register_manager.allocate_register('RA', RegisterContent(RegisterContentType.LABEL, value=target_label))
+        lines.append(ASM_instructions.MOV('PRL', 'RA'))
+        return lines
+    
 class ASM_instructions:
     @staticmethod
     def LDI(value:int) -> str:
@@ -146,3 +193,33 @@ class ASM_instructions:
     @staticmethod
     def LOAD(reg_name:str) -> str:
         return f"MOV {reg_name}, M"
+    
+    @staticmethod
+    def CMP(source:str) -> str:
+        return f"CMP {source}"
+    
+    @staticmethod
+    def LABEL(label_name:str) -> str:
+        return f"{label_name}:"
+    
+    @staticmethod
+    def JMP() -> str:
+        return "JMP"
+    
+    @staticmethod
+    def CONDITIONAL_JUMP(jump_type:str) -> str:
+        """Generate conditional jump instruction (JEQ, JNE, JLT, JLE, JGT, JGE)"""
+        return jump_type
+    
+    @staticmethod
+    def SETMSBRA() -> str:
+        """Set most significant bit of RA = 1
+        Ra = [1:Ra[7:0]]
+        """
+        return "SMSBRA"
+
+
+    @staticmethod
+    def LDI_LABEL(label_name:str) -> str:
+        """Load label address into RA using @ prefix"""
+        return f"LDI @{label_name}"

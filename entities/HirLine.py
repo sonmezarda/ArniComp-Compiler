@@ -22,8 +22,11 @@ class HirLine:
             return ArithmeticOpHirLine(hir_line)
         elif splitted_len == 5 and splitted[3] in ['==', '!=', '<', '<=', '>', '>=', '&&', '||']:
             return ConditionalOpHirLine(hir_line)
-        elif splitted_len == 4 and splitted[0] == 'IF': 
+        elif splitted_len == 6 and splitted[0] == 'IF' and splitted[4] == 'GOTO':
+            # New format: IF left op right GOTO label
             return IfOpHirLine(hir_line)
+        elif splitted_len == 2 and splitted[0] == 'GOTO':
+            return GotoHirLine(hir_line)
         elif splitted_len == 1 and splitted[0].endswith(':'):
             return LabelHirLine(hir_line)
         else:
@@ -139,18 +142,63 @@ class ConditionalOpHirLine(HirLine):
         self.line = f"{self.result_var} = {self.left_operand} {self.operator} {self.right_operand}"
 
 class IfOpHirLine(HirLine):
+    """
+    Example: IF a <= 40 GOTO .Lelse0
+    """
     def __init__(self, line:str):
         super().__init__(line)
         self.type = HirLineType.IF_OP
-        self.cond_var = self.splitted[1]
-        self.target_label = self.splitted[3]
+        # Parse: IF left op right GOTO label
+        self.left_operand = self.splitted[1]
+        self.operator = self.splitted[2]
+        self.right_operand = self.splitted[3]
+        self.target_label = self.splitted[5]
+        
+        # Check if operands are constants
+        self.left_isConstant = self._is_constant(self.left_operand)
+        self.right_isConstant = self._is_constant(self.right_operand)
+        
+        if self.left_isConstant:
+            self.left_operand = int(self.left_operand)
+        if self.right_isConstant:
+            self.right_operand = int(self.right_operand)
     
-    def set_cond_var(self, new_cond_var):
-        self.cond_var = new_cond_var
+    def _is_constant(self, value) -> bool:
+        if isinstance(value, int):
+            return True
+        if isinstance(value, str):
+            return value.isdigit() or (value.startswith('-') and value[1:].isdigit())
+        return False
+    
+    def set_left_operand(self, new_left):
+        self.left_operand = new_left
+        self.left_isConstant = self._is_constant(new_left)
+        if self.left_isConstant and isinstance(self.left_operand, str):
+            self.left_operand = int(self.left_operand)
+        self.update_line()
+    
+    def set_right_operand(self, new_right):
+        self.right_operand = new_right
+        self.right_isConstant = self._is_constant(new_right)
+        if self.right_isConstant and isinstance(self.right_operand, str):
+            self.right_operand = int(self.right_operand)
         self.update_line()
 
     def update_line(self):
-        self.line = f"IF {self.cond_var} GOTO {self.target_label}"
+        self.line = f"IF {self.left_operand} {self.operator} {self.right_operand} GOTO {self.target_label}"
+
+class GotoHirLine(HirLine):
+    def __init__(self, line:str):
+        super().__init__(line)
+        self.type = HirLineType.GOTO
+        self.target_label = self.splitted[1]
+    
+    def set_target_label(self, new_target_label):
+        self.target_label = new_target_label
+        self.update_line()
+
+    def update_line(self):
+        self.line = f"GOTO {self.target_label}"
 
 class LabelHirLine(HirLine):
     def __init__(self, line:str):
@@ -164,3 +212,4 @@ class HirLineType:
     CONDITIONAL_OP = "CONDITIONAL_OP"
     IF_OP = "IF_OP"
     LABEL = "LABEL"
+    GOTO = "GOTO"

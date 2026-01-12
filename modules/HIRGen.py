@@ -64,23 +64,20 @@ def get_ir_high(block_items: List[c_ast.Node]) -> List[str]:
             if not isinstance(cond, c_ast.BinaryOp):
                 raise NotImplementedError("Only BinaryOp conditions are supported in IF for now.")
 
-            # Generate left & right
+            # Generate left & right operands
             left = gen_expr(cond.left, lines)
             right = gen_expr(cond.right, lines)
 
-            # Invert operator
+            # Invert operator for "jump if false" logic
             inv_op = invert_condition(cond.op)
-
-            # Allocate temp for inverted condition
-            t_cond = new_temp()
-            lines.append(f"{t_cond} = {format_val(left)} {inv_op} {format_val(right)}")
 
             # Labels
             else_label = generate_else_label()
             end_label = generate_if_label()
 
-            # Jump if condition is FALSE
-            lines.append(f"IF {t_cond} GOTO {else_label}")
+            # Jump if condition is FALSE (inverted condition is TRUE)
+            # New format: IF left inv_op right GOTO else_label
+            lines.append(f"IF {format_val(left)} {inv_op} {format_val(right)} GOTO {else_label}")
 
             # THEN block
             then_items = getattr(node.iftrue, 'block_items', []) or [node.iftrue]

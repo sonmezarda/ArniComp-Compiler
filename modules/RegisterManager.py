@@ -6,16 +6,17 @@ class RegisterContentType(StrEnum):
     VARIABLE = 'variable'
     CONSTANT = 'constant'
     VARIABLE_ADDRESS = 'variable_address'
+    LABEL = 'label'
 
 class RegisterContent:
-    def __init__(self, content_type:RegisterContentType, value:int|None = None, variable_name:str|None = None):
+    def __init__(self, content_type:RegisterContentType, value:int|str|None = None, variable_name:str|None = None):
         if content_type == RegisterContentType.EMPTY:
             self.content_type = RegisterContentType.EMPTY
             value = None
         elif content_type == RegisterContentType.CONSTANT:
             if value is None:
                 raise ValueError("Constant register content must have a value.")
-            if value > REGISTER_MAX_VALUE:
+            if isinstance(value, int) and value > REGISTER_MAX_VALUE:
                 raise ValueError(f"Constant value {value} exceeds max register value {REGISTER_MAX_VALUE}.")
             if variable_name is not None:
                 raise ValueError("Constant register content should not have a variable name.")
@@ -39,6 +40,12 @@ class RegisterContent:
             self.content_type = RegisterContentType.VARIABLE_ADDRESS
             self.variable_name = variable_name
             self.value = None
+        elif content_type == RegisterContentType.LABEL:
+            if value is None:
+                raise ValueError("Label register content must have a label name as value.")
+            self.content_type = RegisterContentType.LABEL
+            self.value = value  # Label name
+            self.variable_name = None
         else:
             raise ValueError("Invalid register content type.")
 
