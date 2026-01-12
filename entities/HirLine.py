@@ -49,8 +49,11 @@ class AssignmentHirLine(HirLine):
         if self.isConstant:
             self.value = int(self.value)
 
-    def set_value(self, new_value):
+    def set_value(self, new_value, is_constant:bool=False):
         self.value = new_value
+        self.isConstant = is_constant
+        if self.isConstant and isinstance(self.value, str):
+            self.value = int(self.value)
         self.update_line()
 
     def update_line(self):
