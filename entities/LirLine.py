@@ -73,6 +73,7 @@ class MovDestinationType:
 
 class MovSourceType:
     REGISTER = 'REGISTER'
+    VARIABLE = 'VARIABLE'
 
 class MovDestination:
     def __init__(self, type:MovDestinationType, value:str):
@@ -82,7 +83,7 @@ class MovDestination:
             self.var = value
         elif type is MovDestinationType.REGISTER:
             self.value_str = value
-            self.register = value
+            self.reg_name = value
             self.type = MovDestinationType.REGISTER
         elif type is MovDestinationType.VARIABLE_ADDRESS:
             self.value_str = f'var:{value}:addr'
@@ -113,6 +114,10 @@ class MovSource:
             self.value_str = value
             self.type = MovSourceType.REGISTER
             self.reg_name = value
+        elif type is MovSourceType.VARIABLE:
+            self.value_str = f'var:{value}'
+            self.type = MovSourceType.VARIABLE
+            self.var_name = value
         else:
             raise ValueError(f"Invalid MovSourceType: {type}")
     
@@ -122,6 +127,9 @@ class MovSource:
     def parse(source_str:str) -> MovSource:
         if source_str in SOURCE_REGISTERS_STR:
             return MovSource(MovSourceType.REGISTER, source_str)
+        elif source_str.startswith('var:'):
+            var_name = source_str[4:]
+            return MovSource(MovSourceType.VARIABLE, var_name)
         else:
             raise ValueError(f"Invalid MovSource string: {source_str}")
 

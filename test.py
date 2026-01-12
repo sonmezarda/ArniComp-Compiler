@@ -10,6 +10,7 @@ from modules.LIRGen import generate_ir_low
 from modules.AssemblyGen import AssemblyGenerator
 
 from modules.HIROptimizer import optimize_hir
+from modules.LIROptimizer import optimize_lir
 from entities.HirLine import HirLine
 FILE_NAME = 'tests/first.c'
 PARSER_DEBUG = False
@@ -41,16 +42,20 @@ def main():
     print("---- LIR Lines ----")
     for line in lir_lines:
         print(line)
+
+    optimized_lir_lines = optimize_lir(lir_lines)  # You can add LIR optimizations here if needed
+    
+    print("---- Optimized LIR Lines ----")
+    for line in optimized_lir_lines:
+        print(line)
     
     assembly_generator = AssemblyGenerator(symbol_table)
-    assembly_lines = assembly_generator.generate_assembly_code(lir_lines)
+    assembly_lines = assembly_generator.generate_assembly_code(optimized_lir_lines)
 
     print("---- Assembly Lines ----")
     for line in assembly_lines:
         print(line)
     
-
-
 
 def lir_test():
     test_hir_lines = [

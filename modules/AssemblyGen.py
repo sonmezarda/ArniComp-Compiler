@@ -47,6 +47,19 @@ class AssemblyGenerator:
                     
                     source_reg = movSource.reg_name
                     assembly_lines.append(ASM_instructions.STORE(source_reg))
+                elif movDestination.type == MovDestinationType.REGISTER and movSource.type == MovSourceType.VARIABLE:
+                    variable = self.variable_manager.get_variable(movSource.var_name)
+                    if variable is None:
+                        raise ValueError(f"Variable '{movSource.var_name}' not found in VariableManager.")
+                    
+                    is_var_addr_set = self.register_manager.check_mar_address(variable.address.address)
+                    if not is_var_addr_set:
+                        raise ValueError(f"MAR does not point to the address of variable {movSource.var_name}\n Var addr: {variable.address.address:#04x} \n MAR addr: {self.register_manager.get_mar_address():#04x}")
+                    
+                    dest_reg = movDestination.reg_name
+                    assembly_lines.append(ASM_instructions.LOAD(dest_reg))
+                else:
+                    raise ValueError("Only MOV from REGISTER to VARIABLE is implemented in this Assembly generator.")
             elif isinstance(lir, SetMarLirLine):
                 mar_destination = lir.destination
                 if mar_destination.type == MovDestinationType.VARIABLE_ADDRESS:
@@ -129,3 +142,7 @@ class ASM_instructions:
     @staticmethod
     def STORE(reg_name:str) -> str:
         return f"MOV M, {reg_name}"
+
+    @staticmethod
+    def LOAD(reg_name:str) -> str:
+        return f"MOV {reg_name}, M"
