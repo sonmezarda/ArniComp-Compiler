@@ -1,5 +1,5 @@
 from enum import StrEnum
-from pycparser.c_ast import FileAST,FuncDef, Decl, Constant
+from pycparser.c_ast import FileAST,FuncDef, Decl, Constant  # type: ignore[import-untyped]
 
 from entities.SymbolTable import *
 
@@ -40,13 +40,12 @@ def generate_symbol_table(ast:FileAST)  -> SymbolTable:
             body = ext.body
             for stmt in body.block_items:
                 if isinstance(stmt, Decl):
-                    var_symbol = create_variable_symbol(stmt, SymbolScope.GLOBAL if func_name == 'main' else SymbolScope.LOCAL)
+                    var_symbol = create_variable_symbol(stmt, SymbolScope.LOCAL)
                     symbol_table.add_symbol(var_symbol)
 
             if func_name == 'main':
                 continue
             func_return_type =  get_function_return_type(ext)
-            print("return type", func_return_type)
             func_symbol = Symbol(
                 name=func_name,
                 kind=SymbolKind.FUNCTION,
@@ -58,9 +57,7 @@ def generate_symbol_table(ast:FileAST)  -> SymbolTable:
         elif isinstance(ext, Decl):
             var_symbol = create_variable_symbol(ext, SymbolScope.GLOBAL)
             symbol_table.add_symbol(var_symbol)
-            print(f"Variable: {var_symbol.name}")
         else:
-            print("Unknown external declaration")
-            print(type(ext))
+            continue
         
     return symbol_table

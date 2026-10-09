@@ -1,4 +1,4 @@
-from pycparser.c_ast import FileAST,FuncDef
+from pycparser.c_ast import FileAST,FuncDef  # type: ignore[import-untyped]
 
 def get_main_function(ast:FileAST) -> FuncDef | None:
     for ext in ast.ext:

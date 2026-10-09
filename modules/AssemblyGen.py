@@ -1,5 +1,5 @@
 from entities.LirLine import *
-from modules.MemoryManager import VariableManager
+from modules.MemoryManager import VariableManager, VariableTypes, AddressType, Variable
 from modules.SymbolTableGen import SymbolTable
 from modules.RegisterManager import RegisterManager, Register, RegisterContent, RegisterContentType, ArnicompRegisterManager
 from helpers.ArchitectureHelper import MAX_LDI_VALUE
@@ -11,8 +11,19 @@ class AssemblyGenerator:
         self.variable_manager = vm
         self.register_manager = ArnicompRegisterManager()
 
-        self.assembly_lines = []
+        self.assembly_lines: list[str] = []
         self.initialize_registers()
+
+    def _get_or_create_variable(self, name: str) -> Variable:
+        variable = self.variable_manager.get_variable(name)
+        if variable is not None:
+            return variable
+
+        # Compiler temporaries (.tX) are spilled to memory in LIR lowering.
+        if name.startswith('.t'):
+            return self.variable_manager.create_variable(name, VariableTypes.char, AddressType.STATIC)
+
+        raise ValueError(f"Variable '{name}' not found in VariableManager.")
 
     def initialize_registers(self) -> list[str]:
         init_reg_Lines:list[str] = [
@@ -42,35 +53,50 @@ class AssemblyGenerator:
                 movDestination = lir.destination
                 movSource = lir.source
                 if movDestination.type == MovDestinationType.VARIABLE and movSource.type == MovSourceType.REGISTER:
-                    variable = self.variable_manager.get_variable(movDestination.var)
-                    if variable is None:
-                        raise ValueError(f"Variable '{movDestination.var}' not found in VariableManager.")
+                    if movDestination.var is None or movSource.reg_name is None:
+                        raise ValueError("Invalid MOV operands for variable store.")
+                    variable = self._get_or_create_variable(movDestination.var)
                     
-                    is_var_addr_set = self.register_manager.check_mar_address(variable.address.address)
-                    if not is_var_addr_set:
-                        raise ValueError(f"MAR does not point to the address of variable {movDestination.var}\n Var addr: {variable.address.address:#04x} \n MAR addr: {self.register_manager.get_mar_address():#04x}")
+                    if self._is_mar_cache_known():
+                        is_var_addr_set = self.register_manager.check_mar_address(variable.address.address)
+                        if not is_var_addr_set:
+                            raise ValueError(f"MAR does not point to the address of variable {movDestination.var}\n Var addr: {variable.address.address:#04x} \n MAR addr: {self.register_manager.get_mar_address():#04x}")
                     
                     source_reg = movSource.reg_name
                     assembly_lines.append(ASM_instructions.STORE(source_reg))
                 elif movDestination.type == MovDestinationType.REGISTER and movSource.type == MovSourceType.VARIABLE:
-                    variable = self.variable_manager.get_variable(movSource.var_name)
-                    if variable is None:
-                        raise ValueError(f"Variable '{movSource.var_name}' not found in VariableManager.")
+                    if movSource.var_name is None or movDestination.reg_name is None:
+                        raise ValueError("Invalid MOV operands for variable load.")
+                    variable = self._get_or_create_variable(movSource.var_name)
                     
-                    is_var_addr_set = self.register_manager.check_mar_address(variable.address.address)
-                    if not is_var_addr_set:
-                        raise ValueError(f"MAR does not point to the address of variable {movSource.var_name}\n Var addr: {variable.address.address:#04x} \n MAR addr: {self.register_manager.get_mar_address():#04x}")
+                    if self._is_mar_cache_known():
+                        is_var_addr_set = self.register_manager.check_mar_address(variable.address.address)
+                        if not is_var_addr_set:
+                            raise ValueError(f"MAR does not point to the address of variable {movSource.var_name}\n Var addr: {variable.address.address:#04x} \n MAR addr: {self.register_manager.get_mar_address():#04x}")
                     
                     dest_reg = movDestination.reg_name
                     assembly_lines.append(ASM_instructions.LOAD(dest_reg))
+                elif movDestination.type == MovDestinationType.REGISTER and movSource.type == MovSourceType.REGISTER:
+                    if movDestination.reg_name is None or movSource.reg_name is None:
+                        raise ValueError("Invalid MOV operands for register-to-register move.")
+                    dest_reg_name = movDestination.reg_name
+                    src_reg_name = movSource.reg_name
+                    if dest_reg_name != src_reg_name:
+                        assembly_lines.append(ASM_instructions.MOV(dest_reg_name, src_reg_name))
+
+                    src_reg = self.register_manager.get_register(src_reg_name)
+                    if src_reg is not None and src_reg.content is not None:
+                        self.register_manager.allocate_register(dest_reg_name, src_reg.content)
+                    else:
+                        self.register_manager.free_register(dest_reg_name)
                 else:
-                    raise ValueError("Only MOV from REGISTER to VARIABLE is implemented in this Assembly generator.")
+                    raise ValueError("Unsupported MOV combination in AssemblyGenerator.")
             elif isinstance(lir, SetMarLirLine):
                 mar_destination = lir.destination
                 if mar_destination.type == MovDestinationType.VARIABLE_ADDRESS:
-                    variable = self.variable_manager.get_variable(mar_destination.var)
-                    if variable is None:
-                        raise ValueError(f"Variable '{mar_destination.var}' not found in VariableManager.")
+                    if mar_destination.var is None:
+                        raise ValueError("SETMAR variable destination is missing variable name.")
+                    variable = self._get_or_create_variable(mar_destination.var)
                     
                     assembly_lines.extend(self._ASM_set_mar_constant(variable.address.address))
 
@@ -81,15 +107,30 @@ class AssemblyGenerator:
                 # CMP source - compare RD with source
                 source = lir.source
                 if source.type == MovSourceType.REGISTER:
+                    if source.reg_name is None:
+                        raise ValueError("CMP register source is missing register name.")
                     assembly_lines.append(ASM_instructions.CMP(source.reg_name))
                 elif source.type == MovSourceType.VARIABLE:
                     # CMP M (memory at MAR)
                     assembly_lines.append(ASM_instructions.CMP('M'))
                 else:
                     raise ValueError(f"Unsupported CMP source type: {source.type}")
+
+            elif isinstance(lir, AluOpLirLine):
+                source = lir.source
+                if source.type == MovSourceType.REGISTER:
+                    if source.reg_name is None:
+                        raise ValueError("ALU register source is missing register name.")
+                    assembly_lines.append(ASM_instructions.ALU(lir.opcode, source.reg_name))
+                elif source.type == MovSourceType.VARIABLE:
+                    assembly_lines.append(ASM_instructions.ALU(lir.opcode, 'M'))
+                else:
+                    raise ValueError(f"Unsupported ALU source type: {source.type}")
             
             elif isinstance(lir, LabelLirLine):
                 # Label definition
+                # Control-flow joins invalidate linear register cache assumptions.
+                self._invalidate_control_flow_cache()
                 assembly_lines.append(ASM_instructions.LABEL(lir.label_name))
             
             elif isinstance(lir, SetPrLirLine):
@@ -106,13 +147,19 @@ class AssemblyGenerator:
             
             else:
                 print("Unhandled LIR line type:", type(lir))
-        
+
+        assembly_lines = self._resolve_setpr_placeholders(assembly_lines)
         assembly_lines = [line for line in assembly_lines if line.strip() != ""]
         return assembly_lines
     
     def _ASM_load_imm_constant(self, value:int) -> str:
         ra = self.register_manager.get_register('RA')
-        if ra.content.content_type == RegisterContentType.CONSTANT and ra.content.value == value:
+        if (
+            ra is not None
+            and ra.content is not None
+            and ra.content.content_type == RegisterContentType.CONSTANT
+            and ra.content.value == value
+        ):
             return ""  # No need to load if RA already has the constant value
         
         self.register_manager.allocate_register('RA', RegisterContent(RegisterContentType.CONSTANT, value=value))
@@ -128,12 +175,20 @@ class AssemblyGenerator:
 
         if dest_reg is None or src_reg is None:
             raise ValueError(f"Invalid register names: dest='{dest_reg_name}', src='{src_reg_name}'")
-        
-        if dest_reg.content.content_type == src_reg.content.content_type:
-            if dest_reg.content.content_type == RegisterContentType.CONSTANT and dest_reg.content.value == src_reg.content.value:
+
+        if (
+            dest_reg.content is not None
+            and src_reg.content is not None
+            and dest_reg.content.content_type == src_reg.content.content_type
+            and dest_reg.content.content_type == RegisterContentType.CONSTANT
+            and dest_reg.content.value == src_reg.content.value
+        ):
                 return ""  # No need to move if both registers have the same constant value
-        
-        self.register_manager.allocate_register(dest_reg_name, src_reg.content)
+
+        if src_reg.content is not None:
+            self.register_manager.allocate_register(dest_reg_name, src_reg.content)
+        else:
+            self.register_manager.free_register(dest_reg_name)
         return ASM_instructions.MOV(dest_reg_name, src_reg_name)
     
     def _ASM_set_mar_constant(self, address:int) -> list[str]:
@@ -147,31 +202,104 @@ class AssemblyGenerator:
             raise ValueError("MAR registers not found.")
         
         lines:list[str] = []
-        if marl.content.content_type != RegisterContentType.CONSTANT or marl.content.value != mar_low:
+        marl_is_known = (
+            marl.content is not None
+            and marl.content.content_type == RegisterContentType.CONSTANT
+            and marl.content.value == mar_low
+        )
+        if not marl_is_known:
             lines.append(ASM_instructions.LDI(mar_low))
             self.register_manager.allocate_register('RA', RegisterContent(RegisterContentType.CONSTANT, value=mar_low))
             lines.append(ASM_instructions.MOV('MARL', 'RA'))
             self.register_manager.allocate_register('MARL', RegisterContent(RegisterContentType.CONSTANT, value=mar_low))
-        if marh.content.content_type != RegisterContentType.CONSTANT or marh.content.value != mar_high:
+        marh_is_known = (
+            marh.content is not None
+            and marh.content.content_type == RegisterContentType.CONSTANT
+            and marh.content.value == mar_high
+        )
+        if not marh_is_known:
             lines.append(ASM_instructions.LDI(mar_high))
             self.register_manager.allocate_register('RA', RegisterContent(RegisterContentType.CONSTANT, value=mar_high))
             lines.append(ASM_instructions.MOV('MARH', 'RA'))
             self.register_manager.allocate_register('MARH', RegisterContent(RegisterContentType.CONSTANT, value=mar_high))
         
         return lines
+
+    def _invalidate_mar_cache(self) -> None:
+        self.register_manager.free_register('MARL')
+        self.register_manager.free_register('MARH')
+
+    def _is_mar_cache_known(self) -> bool:
+        marl = self.register_manager.get_register('MARL')
+        marh = self.register_manager.get_register('MARH')
+        return (
+            marl is not None
+            and marh is not None
+            and marl.content is not None
+            and marh.content is not None
+            and marl.content.content_type == RegisterContentType.CONSTANT
+            and marh.content.content_type == RegisterContentType.CONSTANT
+            and isinstance(marl.content.value, int)
+            and isinstance(marh.content.value, int)
+        )
+
+    def _invalidate_control_flow_cache(self) -> None:
+        # Any control-flow join can arrive with different register states.
+        for reg_name in ['RA', 'RB', 'RD', 'ACC', 'PRL', 'PRH', 'PCL', 'PCH', 'MARL', 'MARH']:
+            self.register_manager.free_register(reg_name)
     
     def _ASM_set_pr(self, target_label: str) -> list[str]:
         """
-        Set Program Register (PRL) to label address.
-        Note: For 8-bit architecture, we only use PRL for now.
-        PRH support can be added for larger address space.
+        Emit deferred SETPR placeholder.
+        Real encoding is done in _resolve_setpr_placeholders using resolved label addresses.
         """
-        lines: list[str] = []
-        # TODO: Add optimization to skip if PRL already has this label
-        lines.append(ASM_instructions.LDI_LABEL(target_label))
-        self.register_manager.allocate_register('RA', RegisterContent(RegisterContentType.LABEL, value=target_label))
-        lines.append(ASM_instructions.MOV('PRL', 'RA'))
-        return lines
+        return [ASM_instructions.SETPR_PLACEHOLDER(target_label)]
+
+    def _resolve_setpr_placeholders(self, assembly_lines: list[str]) -> list[str]:
+        """
+        Resolve __SETPR__ placeholders in two passes.
+
+        Pass-1 computes instruction addresses with fixed placeholder size:
+          __SETPR__ <label> -> 3 instructions:
+            LDI low7
+            SMSBRA or NOP
+            MOV PRL, RA
+        """
+        label_to_address: dict[str, int] = {}
+        pc = 0
+        for line in assembly_lines:
+            stripped = line.strip()
+            if not stripped or stripped.startswith(';'):
+                continue
+            if stripped.endswith(':'):
+                label_to_address[stripped[:-1]] = pc
+                continue
+            if stripped.startswith("__SETPR__ "):
+                pc += 3
+                continue
+            pc += 1
+
+        resolved: list[str] = []
+        for line in assembly_lines:
+            stripped = line.strip()
+            if stripped.startswith("__SETPR__ "):
+                target_label = stripped.split(maxsplit=1)[1]
+                if target_label not in label_to_address:
+                    raise ValueError(f"Unknown label in SETPR: '{target_label}'")
+
+                target_addr = label_to_address[target_label] & 0xFF
+                resolved.append(ASM_instructions.LDI(target_addr & 0x7F))
+                if target_addr & 0x80:
+                    resolved.append(ASM_instructions.SETMSBRA())
+                else:
+                    resolved.append(ASM_instructions.NOP())
+                resolved.append(ASM_instructions.MOV('PRL', 'RA'))
+
+                self.register_manager.allocate_register('RA', RegisterContent(RegisterContentType.CONSTANT, value=target_addr))
+                self.register_manager.allocate_register('PRL', RegisterContent(RegisterContentType.CONSTANT, value=target_addr))
+                continue
+            resolved.append(line)
+        return resolved
     
 class ASM_instructions:
     @staticmethod
@@ -197,6 +325,10 @@ class ASM_instructions:
     @staticmethod
     def CMP(source:str) -> str:
         return f"CMP {source}"
+
+    @staticmethod
+    def ALU(opcode:str, source:str) -> str:
+        return f"{opcode} {source}"
     
     @staticmethod
     def LABEL(label_name:str) -> str:
@@ -205,6 +337,10 @@ class ASM_instructions:
     @staticmethod
     def JMP() -> str:
         return "JMP"
+
+    @staticmethod
+    def NOP() -> str:
+        return "NOP"
     
     @staticmethod
     def CONDITIONAL_JUMP(jump_type:str) -> str:
@@ -223,3 +359,7 @@ class ASM_instructions:
     def LDI_LABEL(label_name:str) -> str:
         """Load label address into RA using @ prefix"""
         return f"LDI @{label_name}"
+
+    @staticmethod
+    def SETPR_PLACEHOLDER(label_name: str) -> str:
+        return f"__SETPR__ {label_name}"

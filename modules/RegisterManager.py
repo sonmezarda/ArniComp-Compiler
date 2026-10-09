@@ -1,4 +1,6 @@
 from enum import StrEnum
+from typing import Any
+
 from modules.Config import REGISTER_MAX_VALUE, REGISTERS
 
 class RegisterContentType(StrEnum):
@@ -10,9 +12,14 @@ class RegisterContentType(StrEnum):
 
 class RegisterContent:
     def __init__(self, content_type:RegisterContentType, value:int|str|None = None, variable_name:str|None = None):
+        self.content_type: RegisterContentType
+        self.value: int | str | None = None
+        self.variable_name: str | None = None
+
         if content_type == RegisterContentType.EMPTY:
             self.content_type = RegisterContentType.EMPTY
-            value = None
+            self.value = None
+            self.variable_name = None
         elif content_type == RegisterContentType.CONSTANT:
             if value is None:
                 raise ValueError("Constant register content must have a value.")
@@ -56,7 +63,7 @@ class Register():
         self.readable = readable
         self.writable = writable
         self.is_allocated = False
-        self.content = None
+        self.content: RegisterContent | None = None
     
     def allocate(self, content:RegisterContent):
         self.is_allocated = True
@@ -68,13 +75,13 @@ class Register():
     
 
 class RegisterManager:
-    def __init__(self, register_config:dict[int, dict[str, any]]):
+    def __init__(self, register_config:dict[int, dict[str, Any]]):
         self.registers: dict[str, Register] = {}
         for reg_info in register_config.values():
             reg = Register(name=reg_info['NAME'], readable=reg_info['READABLE'], writable=reg_info['WRITABLE'])
             self.registers[reg.name] = reg
     
-    def get_register(self, name:str) -> Register:
+    def get_register(self, name:str) -> Register | None:
         return self.registers.get(name, None)
     
     def free_register(self, name:str):
@@ -82,7 +89,7 @@ class RegisterManager:
         if reg:
             reg.free()
     
-    def allocate_register(self, name:str, content:RegisterContent) -> Register:
+    def allocate_register(self, name:str, content:RegisterContent) -> Register | None:
         reg = self.get_register(name)
         if reg:
             reg.allocate(content)
@@ -102,14 +109,19 @@ class ArnicompRegisterManager(RegisterManager):
     def get_mar_registers(self) -> tuple[Register, Register]:
         marl_low = self.get_register('MARL')
         marl_high = self.get_register('MARH')
+        if marl_low is None or marl_high is None:
+            raise ValueError("MAR registers are not defined in register configuration.")
         return (marl_low, marl_high)
 
     def get_mar_address(self) -> int:
-        marl_low = self.get_register('MARL')
-        marl_high = self.get_register('MARH')
+        marl_low, marl_high = self.get_mar_registers()
         if marl_low.content is None or marl_high.content is None:
             raise ValueError("MAR registers are not properly set.")
-        address = (marl_high.content.value << 8) | marl_low.content.value
+        high = marl_high.content.value
+        low = marl_low.content.value
+        if not isinstance(high, int) or not isinstance(low, int):
+            raise ValueError("MAR register contents must be integer constants.")
+        address = (high << 8) | low
         return address
 
     def check_mar_address(self, address:int) -> bool:

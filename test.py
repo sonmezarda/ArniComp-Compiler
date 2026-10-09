@@ -1,6 +1,6 @@
 from __future__ import annotations
-import pycparser as pcp
-from pycparser.c_ast import FileAST
+import pycparser as pcp  # type: ignore[import-untyped]
+from pycparser.c_ast import FileAST  # type: ignore[import-untyped]
 
 from helpers.FileHelper import read_file
 from modules.SymbolTableGen import generate_symbol_table, SymbolTable
@@ -50,7 +50,7 @@ def main():
         print(line)
     
     assembly_generator = AssemblyGenerator(symbol_table)
-    assembly_lines = assembly_generator.generate_assembly_code(lir_lines)
+    assembly_lines = assembly_generator.generate_assembly_code(optimized_lir_lines)
 
     print("---- Assembly Lines ----")
     for line in assembly_lines:

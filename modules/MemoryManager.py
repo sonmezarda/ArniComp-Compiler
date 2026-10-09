@@ -40,7 +40,7 @@ class VariableManager:
         self.static_start_address = static_start_address
         self.static_end_address = static_end_address
         self.variables: dict[str, Variable] = {}
-        self.addresses: dict[int, Variable] = {}
+        self.addresses: dict[int, Variable | None] = {}
     
     def get_empty_address(self, size:int) -> int:
         for addr in range(self.static_start_address, self.static_end_address - size + 1):
@@ -81,7 +81,7 @@ class VariableManager:
         for symbol_name, symbol in symbol_table.table.items():
             if symbol.kind != SymbolKind.VARIABLE:
                 continue
-            if symbol.scope == SymbolScope.GLOBAL:
+            if symbol.scope in (SymbolScope.GLOBAL, SymbolScope.LOCAL):
                 if symbol.type == SymbolType.CHAR:
                     self.create_variable(symbol_name, VariableTypes.char, AddressType.STATIC)
                 elif symbol.type == SymbolType.INT:

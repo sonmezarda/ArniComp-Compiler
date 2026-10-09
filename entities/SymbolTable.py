@@ -43,8 +43,15 @@ class SymbolTable:
     def __init__(self):
         self.table: dict[str, Symbol] = {}
     
-    def add(self, name:str, type:SymbolType, scope:SymbolScope, qualifier:SymbolQualifier|None = None):
-        symbol = Symbol(name, type, scope, qualifier)
+    def add(
+        self,
+        name: str,
+        type: SymbolType,
+        scope: SymbolScope,
+        qualifier: SymbolQualifier | None = None,
+        kind: SymbolKind = SymbolKind.VARIABLE,
+    ):
+        symbol = Symbol(name, kind, type, scope, qualifier)
         self.table[name] = symbol
 
     def add_symbol(self, symbol:Symbol):

@@ -1,8 +1,8 @@
 from modules.AstUtil import get_main_function
 
 from typing import List, Union
-from pycparser import c_ast
-from pycparser.c_ast import FileAST
+from pycparser import c_ast  # type: ignore[import-untyped]
+from pycparser.c_ast import FileAST  # type: ignore[import-untyped]
 
 from helpers.HirHelper import new_temp, invert_condition, format_val, _op_eval
 
@@ -21,14 +21,46 @@ def generate_if_label() -> str:
     _if_label_counter += 1
     return name
 
+
+def _collect_inline_return_functions(ast: FileAST) -> dict[str, c_ast.Node]:
+    """
+    Collect very simple no-arg functions that can be inlined at compile-time.
+    Supported shape:
+      int foo() { return <expr>; }
+    """
+    inline_returns: dict[str, c_ast.Node] = {}
+    for ext in ast.ext:
+        if not isinstance(ext, c_ast.FuncDef):
+            continue
+        func_name = ext.decl.name
+        if func_name == "main":
+            continue
+
+        args = getattr(ext.decl.type, "args", None)
+        has_args = args is not None and getattr(args, "params", None)
+        if has_args:
+            continue
+
+        body_items = getattr(ext.body, "block_items", None) or []
+        if len(body_items) != 1:
+            continue
+        only_stmt = body_items[0]
+        if not isinstance(only_stmt, c_ast.Return) or only_stmt.expr is None:
+            continue
+        inline_returns[func_name] = only_stmt.expr
+    return inline_returns
+
 def generate_ir_high(ast:FileAST) -> List[str]:
     lines: List[str] = []
     main_func = get_main_function(ast) 
+    if main_func is None:
+        raise ValueError("Main function not found in AST.")
+    inline_returns = _collect_inline_return_functions(ast)
 
     for node in ast.ext:
         if isinstance(node, c_ast.Decl):
             if node.init is not None:
-                val = gen_expr(node.init, lines)
+                val = gen_expr(node.init, lines, inline_returns)
                 lines.append(f"{node.name} = {format_val(val)}")
             else:
                 # declaration without init
@@ -40,22 +72,22 @@ def generate_ir_high(ast:FileAST) -> List[str]:
             raise NotImplementedError(f"IR generation for top-level node type '{type(node).__name__}' not implemented.")
 
     block_items = getattr(main_func.body, 'block_items', []) or []
-    lines.extend(get_ir_high(block_items))
+    lines.extend(get_ir_high(block_items, inline_returns))
 
     return lines
     
 
-def get_ir_high(block_items: List[c_ast.Node]) -> List[str]:
+def get_ir_high(block_items: List[c_ast.Node], inline_returns: dict[str, c_ast.Node]) -> List[str]:
     lines : List[str] = []
     for node in block_items:
         if isinstance(node, c_ast.Decl):
             if node.init is not None:
-                val = gen_expr(node.init, lines)
+                val = gen_expr(node.init, lines, inline_returns)
                 lines.append(f"{node.name} = {format_val(val)}")
             else:
                 pass
         elif isinstance(node, c_ast.Assignment):
-            val = gen_expr(node.rvalue, lines)
+            val = gen_expr(node.rvalue, lines, inline_returns)
             lines.append(f"{node.lvalue.name} = {format_val(val)}")
         elif isinstance(node, c_ast.If):
             cond = node.cond
@@ -65,8 +97,8 @@ def get_ir_high(block_items: List[c_ast.Node]) -> List[str]:
                 raise NotImplementedError("Only BinaryOp conditions are supported in IF for now.")
 
             # Generate left & right operands
-            left = gen_expr(cond.left, lines)
-            right = gen_expr(cond.right, lines)
+            left = gen_expr(cond.left, lines, inline_returns)
+            right = gen_expr(cond.right, lines, inline_returns)
 
             # Invert operator for "jump if false" logic
             inv_op = invert_condition(cond.op)
@@ -81,7 +113,7 @@ def get_ir_high(block_items: List[c_ast.Node]) -> List[str]:
 
             # THEN block
             then_items = getattr(node.iftrue, 'block_items', []) or [node.iftrue]
-            lines.extend(get_ir_high(then_items))
+            lines.extend(get_ir_high(then_items, inline_returns))
 
             # After THEN, jump end (only if ELSE exists)
             if node.iffalse is not None:
@@ -93,7 +125,7 @@ def get_ir_high(block_items: List[c_ast.Node]) -> List[str]:
             # ELSE block
             if node.iffalse is not None:
                 else_items = getattr(node.iffalse, 'block_items', []) or [node.iffalse]
-                lines.extend(get_ir_high(else_items))
+                lines.extend(get_ir_high(else_items, inline_returns))
 
                 # END label
                 lines.append(f"{end_label}:")
@@ -103,7 +135,7 @@ def get_ir_high(block_items: List[c_ast.Node]) -> List[str]:
 
 
 
-def gen_expr(node: c_ast.Node, ir: List[str]) -> Union[int,str]:
+def gen_expr(node: c_ast.Node, ir: List[str], inline_returns: dict[str, c_ast.Node]) -> Union[int,str]:
     # Constant
     if isinstance(node, c_ast.Constant):
         try:
@@ -117,21 +149,23 @@ def gen_expr(node: c_ast.Node, ir: List[str]) -> Union[int,str]:
 
     # ExprList
     if isinstance(node, c_ast.ExprList):
-        last = None
-        for e in node.exprs:
-            last = gen_expr(e, ir)
+        if not node.exprs:
+            raise ValueError("Empty expression list is not supported.")
+        last = gen_expr(node.exprs[0], ir, inline_returns)
+        for e in node.exprs[1:]:
+            last = gen_expr(e, ir, inline_returns)
         return last
 
     # Assignment 
     if isinstance(node, c_ast.Assignment):
-        rhs = gen_expr(node.rvalue, ir)
+        rhs = gen_expr(node.rvalue, ir, inline_returns)
         lhs_name = node.lvalue.name  # assuming ID
         ir.append(f"{lhs_name} = {format_val(rhs)}")
         return lhs_name
 
     # UnaryOp
     if isinstance(node, c_ast.UnaryOp):
-        operand = gen_expr(node.expr, ir)
+        operand = gen_expr(node.expr, ir, inline_returns)
         op = node.op
         # constant fold
         if isinstance(operand, int):
@@ -154,8 +188,8 @@ def gen_expr(node: c_ast.Node, ir: List[str]) -> Union[int,str]:
 
     # BinaryOp
     if isinstance(node, c_ast.BinaryOp):
-        left = gen_expr(node.left, ir)
-        right = gen_expr(node.right, ir)
+        left = gen_expr(node.left, ir, inline_returns)
+        right = gen_expr(node.right, ir, inline_returns)
         op = node.op
 
         # constant folding
@@ -172,10 +206,17 @@ def gen_expr(node: c_ast.Node, ir: List[str]) -> Union[int,str]:
 
     # FuncCall 
     if isinstance(node, c_ast.FuncCall):
+        if isinstance(node.name, c_ast.ID):
+            fn_name = node.name.name
+            if fn_name in inline_returns:
+                if node.args is not None and getattr(node.args, "exprs", None):
+                    raise NotImplementedError(f"Inlined function '{fn_name}' with arguments is not supported.")
+                return gen_expr(inline_returns[fn_name], ir, inline_returns)
+
         args = []
         if node.args:
             for a in node.args.exprs:
-                args.append(gen_expr(a, ir))
+                args.append(gen_expr(a, ir, inline_returns))
         t = new_temp()
         args_repr = ", ".join(format_val(a) for a in args)
         ir.append(f"{t} = CALL {node.name.name}({args_repr})")

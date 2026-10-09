@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from enum import StrEnum
+
 from helpers.ArchitectureHelper import SOURCE_REGISTERS_STR
 
 
@@ -8,7 +10,7 @@ class LirLine:
         self.line = line
         self.splitted = line.split()
         self.splitted_len = len(self.splitted)
-        self.type = None
+        self.type: str | None = None
 
     def __str__(self):
         return self.line    
@@ -66,26 +68,32 @@ class SetMarLirLine(LirLine):
         """
         return SetMarLirLine(f"SETMAR {destination}")
 
-class MovDestinationType:
+class MovDestinationType(StrEnum):
     VARIABLE = 'VARIABLE'
     REGISTER = 'REGISTER'
     VARIABLE_ADDRESS = 'VARIABLE_ADDRESS'
 
-class MovSourceType:
+
+class MovSourceType(StrEnum):
     REGISTER = 'REGISTER'
     VARIABLE = 'VARIABLE'
 
 class MovDestination:
     def __init__(self, type:MovDestinationType, value:str):
-        if type is MovDestinationType.VARIABLE:
+        self.type: MovDestinationType
+        self.value_str: str
+        self.var: str | None = None
+        self.reg_name: str | None = None
+
+        if type == MovDestinationType.VARIABLE:
             self.value_str = f'var:{value}'
             self.type = MovDestinationType.VARIABLE
             self.var = value
-        elif type is MovDestinationType.REGISTER:
+        elif type == MovDestinationType.REGISTER:
             self.value_str = value
             self.reg_name = value
             self.type = MovDestinationType.REGISTER
-        elif type is MovDestinationType.VARIABLE_ADDRESS:
+        elif type == MovDestinationType.VARIABLE_ADDRESS:
             self.value_str = f'var:{value}:addr'
             self.type = MovDestinationType.VARIABLE_ADDRESS
             self.var = value
@@ -108,13 +116,18 @@ class MovDestination:
 
 class MovSource:
     def __init__(self, type:MovSourceType, value:str):
-        if type is MovSourceType.REGISTER:
+        self.type: MovSourceType
+        self.value_str: str
+        self.reg_name: str | None = None
+        self.var_name: str | None = None
+
+        if type == MovSourceType.REGISTER:
             if value not in SOURCE_REGISTERS_STR:
                 raise ValueError(f"Invalid source register: {value}")
             self.value_str = value
             self.type = MovSourceType.REGISTER
             self.reg_name = value
-        elif type is MovSourceType.VARIABLE:
+        elif type == MovSourceType.VARIABLE:
             self.value_str = f'var:{value}'
             self.type = MovSourceType.VARIABLE
             self.var_name = value
@@ -124,6 +137,7 @@ class MovSource:
     def __str__(self):
         return self.value_str
 
+    @staticmethod
     def parse(source_str:str) -> MovSource:
         if source_str in SOURCE_REGISTERS_STR:
             return MovSource(MovSourceType.REGISTER, source_str)
@@ -134,11 +148,16 @@ class MovSource:
             raise ValueError(f"Invalid MovSource string: {source_str}")
 
 
-class LirLineType:
+class LirLineType(StrEnum):
     LDI = 'LDI'
     MOV = 'MOV'
     SETMAR = 'SETMAR'
     SETPR = 'SETPR'
+    ADD = 'ADD'
+    SUB = 'SUB'
+    AND = 'AND'
+    XOR = 'XOR'
+    NOT = 'NOT'
     CMP = 'CMP'
     LABEL = 'LABEL'
     GOTO = 'GOTO'
@@ -149,6 +168,35 @@ class LirLineType:
     JLE = 'JLE'
     JGT = 'JGT'
     JGE = 'JGE'
+
+
+class AluOpLirLine(LirLine):
+    """
+    Arithmetic / logic op producing ACC:
+    ADD src, SUB src, AND src, XOR src, NOT src
+    """
+    ALLOWED_OPS = {
+        LirLineType.ADD,
+        LirLineType.SUB,
+        LirLineType.AND,
+        LirLineType.XOR,
+        LirLineType.NOT,
+    }
+
+    def __init__(self, line: str):
+        super().__init__(line)
+        opcode = self.splitted[0].upper()
+        if opcode not in self.ALLOWED_OPS:
+            raise ValueError(f"Invalid ALU LIR op: {line}")
+        self.type = opcode
+        self.opcode = opcode
+        self.source_str = self.splitted[1]
+        self.source: MovSource = MovSource.parse(self.source_str)
+
+    @staticmethod
+    def create_line(opcode: str, source: MovSource) -> 'AluOpLirLine':
+        opcode = opcode.upper()
+        return AluOpLirLine(f"{opcode} {source}")
 
 
 class CmpLirLine(LirLine):

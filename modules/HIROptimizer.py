@@ -4,35 +4,53 @@ from entities.HirLine import *
 from entities.SymbolTable import SymbolTable
 
 def remove_unused_temporaries(hir_lines:list[HirLine]) -> list[HirLine]:
-    optimized_hir_lines = []
+    optimized_hir_lines: list[HirLine] = []
     used_temps_count : dict[str, int] = get_temp_vars_used_count(hir_lines)
-    is_next_to_remove = False
-    for (i, hir) in enumerate(hir_lines):
-        if is_next_to_remove:
-            is_next_to_remove = False
-            continue
-        if isinstance(hir, ArithmeticOpHirLine):
-            if hir.result_var.startswith('.t'):
-                if used_temps_count.get(hir.result_var, 0) == 2:
-                    if hir_lines[i+1].type in [HirLineType.ASSIGNMENT]:
-                        next_hir : AssignmentHirLine = hir_lines[i+1]
-                        hir : ArithmeticOpHirLine = hir
-                        optimized_hir_lines.append(ArithmeticOpHirLine(f"{next_hir.var_name} = {hir.left_operand} {hir.operator} {hir.right_operand}"))
-                        is_next_to_remove = True
-                        continue
-        if isinstance(hir, AssignmentHirLine):
-            if hir.var_name.startswith('.t'):
-                if used_temps_count.get(hir.var_name, 0) == 2:
-                    if hir_lines[i+1].type in [HirLineType.ASSIGNMENT]:
-                        next_hir : AssignmentHirLine = hir_lines[i+1]
-                        hir : AssignmentHirLine = hir
-                        optimized_hir_lines.append(AssignmentHirLine(f"{next_hir.var_name} = {hir.value}"))
-                        is_next_to_remove = True
-                        continue
+    i = 0
+    while i < len(hir_lines):
+        hir = hir_lines[i]
+        next_hir = hir_lines[i+1] if i + 1 < len(hir_lines) else None
 
+        if isinstance(next_hir, AssignmentHirLine):
+            if isinstance(hir, ArithmeticOpHirLine) and hir.result_var.startswith('.t'):
+                if used_temps_count.get(hir.result_var, 0) == 2 and next_hir.value == hir.result_var:
+                    optimized_hir_lines.append(
+                        ArithmeticOpHirLine(f"{next_hir.var_name} = {hir.left_operand} {hir.operator} {hir.right_operand}")
+                    )
+                    i += 2
+                    continue
+
+            if isinstance(hir, AssignmentHirLine) and hir.var_name.startswith('.t'):
+                if used_temps_count.get(hir.var_name, 0) == 2 and next_hir.value == hir.var_name:
+                    optimized_hir_lines.append(AssignmentHirLine(f"{next_hir.var_name} = {hir.value}"))
+                    i += 2
+                    continue
+
+            if isinstance(hir, UnaryOpHirLine) and hir.result_var.startswith('.t'):
+                if used_temps_count.get(hir.result_var, 0) == 2 and next_hir.value == hir.result_var:
+                    optimized_hir_lines.append(UnaryOpHirLine(f"{next_hir.var_name} = {hir.operator} {hir.operand}"))
+                    i += 2
+                    continue
+
+            if isinstance(hir, CallHirLine) and hir.result_var.startswith('.t'):
+                if used_temps_count.get(hir.result_var, 0) == 2 and next_hir.value == hir.result_var:
+                    args_repr = ", ".join(hir.args)
+                    optimized_hir_lines.append(CallHirLine(f"{next_hir.var_name} = CALL {hir.function_name}({args_repr})"))
+                    i += 2
+                    continue
+
+            if isinstance(hir, ConditionalOpHirLine) and hir.result_var.startswith('.t'):
+                if used_temps_count.get(hir.result_var, 0) == 2 and next_hir.value == hir.result_var:
+                    optimized_hir_lines.append(
+                        ConditionalOpHirLine(f"{next_hir.var_name} = {hir.left_operand} {hir.operator} {hir.right_operand}")
+                    )
+                    i += 2
+                    continue
 
         optimized_hir_lines.append(hir)
-    return  optimized_hir_lines
+        i += 1
+
+    return optimized_hir_lines
 
 def propagate_constants(hir_lines: list[HirLine], symbol_table: SymbolTable) -> list[HirLine]:
     """
@@ -91,6 +109,34 @@ def propagate_constants(hir_lines: list[HirLine], symbol_table: SymbolTable) -> 
                 known_values[hir.result_var] = None
             
             propagated_lines.append(hir)
+
+        elif isinstance(hir, UnaryOpHirLine):
+            resolved_operand = _resolve_value(hir.operand, known_values)
+            if resolved_operand != hir.operand:
+                hir.set_operand(resolved_operand)
+
+            if hir.isConstant:
+                value = hir.operand if isinstance(hir.operand, int) else int(hir.operand)
+                if hir.operator == 'neg':
+                    evaluated = -value
+                elif hir.operator == 'bitnot':
+                    evaluated = ~value
+                elif hir.operator == 'not':
+                    evaluated = 0 if value else 1
+                else:
+                    raise NotImplementedError(f"Unsupported unary operator: {hir.operator}")
+
+                new_hir = AssignmentHirLine(f"{hir.result_var} = {evaluated}")
+                propagated_lines.append(new_hir)
+                known_values[hir.result_var] = evaluated
+            else:
+                known_values[hir.result_var] = None
+                propagated_lines.append(hir)
+
+        elif isinstance(hir, CallHirLine):
+            # Function call result is runtime-dynamic by default.
+            known_values[hir.result_var] = None
+            propagated_lines.append(hir)
             
         elif isinstance(hir, ConditionalOpHirLine):
             # Resolve left and right operands
@@ -130,7 +176,7 @@ def propagate_constants(hir_lines: list[HirLine], symbol_table: SymbolTable) -> 
     return propagated_lines
 
 
-def _resolve_value(value, known_values: dict[str, int | None]):
+def _resolve_value(value: int | str, known_values: dict[str, int | None]) -> int | str:
     """
     Resolve a value: if the value is a variable and a known constant exists,
     return that constant. Otherwise return the value unchanged.
@@ -139,8 +185,9 @@ def _resolve_value(value, known_values: dict[str, int | None]):
         return value
     if isinstance(value, str):
         # Değişken mi kontrol et
-        if value in known_values and known_values[value] is not None:
-            return known_values[value]
+        resolved = known_values.get(value)
+        if resolved is not None:
+            return resolved
     return value
 
 
@@ -200,6 +247,25 @@ def remove_dead_assignments(hir_lines: list[HirLine], symbol_table: SymbolTable)
                     dead_indices.add(last_assignment_idx[hir.result_var])
             last_assignment_idx[hir.result_var] = i
             used_vars.discard(hir.result_var)
+
+        elif isinstance(hir, UnaryOpHirLine):
+            if isinstance(hir.operand, str):
+                used_vars.add(hir.operand)
+            if hir.result_var in last_assignment_idx:
+                if hir.result_var not in used_vars:
+                    dead_indices.add(last_assignment_idx[hir.result_var])
+            last_assignment_idx[hir.result_var] = i
+            used_vars.discard(hir.result_var)
+
+        elif isinstance(hir, CallHirLine):
+            for arg in hir.args:
+                if isinstance(arg, str) and not arg.isdigit():
+                    used_vars.add(arg)
+            if hir.result_var in last_assignment_idx:
+                if hir.result_var not in used_vars:
+                    dead_indices.add(last_assignment_idx[hir.result_var])
+            last_assignment_idx[hir.result_var] = i
+            used_vars.discard(hir.result_var)
             
         elif isinstance(hir, IfOpHirLine):
             # Mark operands in IF condition as used
@@ -241,7 +307,7 @@ def check_var_used(hir_lines:list[str]):
     return used_vars
 
 def get_var_used_count(hir_lines:list[HirLine], symbol_table:SymbolTable) -> dict[str,int]:
-    used_vars_count = {}
+    used_vars_count: dict[str, int] = {}
     for hir in hir_lines:
         splitted = hir.splitted
         for token in splitted:
@@ -260,7 +326,7 @@ def is_line_exists(hir_lines:list[HirLine], target_line:str) -> bool:
     return False
 
 def get_temp_vars_used_count(hir_lines:list[HirLine]) -> dict[str,int]:
-    used_temps_count = {}
+    used_temps_count: dict[str, int] = {}
     for hir in hir_lines:
         splitted = hir.splitted
         for token in splitted:

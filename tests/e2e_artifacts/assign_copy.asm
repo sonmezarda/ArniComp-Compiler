@@ -1,0 +1,17 @@
+LDI 0
+MOV MARL, RA
+MOV MARH, RA
+; ---- End of Initialization ----
+LDI 9
+MOV M, RA
+LDI 1
+MOV MARL, RA
+LDI 0
+MOV M, RA
+LDI 0
+MOV MARL, RA
+MOV RB, M
+LDI 1
+MOV MARL, RA
+MOV M, RB
+HLT
